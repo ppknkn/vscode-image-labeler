@@ -1,0 +1,185 @@
+{
+  "name": "001label",
+  "displayName": "Image Labeler",
+  "description": "高效图片数据标注工具 — 保留/删除二分类标注，支持单张大图预览和缩略图网格批量操作",
+  "version": "1.0.0",
+  "publisher": "labeler",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "image",
+    "label",
+    "annotation",
+    "标注"
+  ],
+  "activationEvents": [
+    "onView:label-explorer",
+    "onCommand:label.openViewer",
+    "onCommand:label.openGrid",
+    "onCommand:label.markKeep",
+    "onCommand:label.markDelete",
+    "onCommand:label.clearLabel",
+    "onCommand:label.refreshTree",
+    "onCommand:label.exportResults",
+    "onCommand:label.nextUnreviewed",
+    "onCommand:label.prevUnreviewed"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "label-sidebar",
+          "title": "图片标注",
+          "icon": "resources/icon-sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "label-sidebar": [
+        {
+          "id": "label-explorer",
+          "name": "文件夹浏览",
+          "icon": "resources/icon-sidebar.svg",
+          "contextualTitle": "图片标注浏览器"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "label.refreshTree",
+        "title": "刷新文件夹",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "label.openViewer",
+        "title": "打开图片查看器",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "label.openGrid",
+        "title": "打开缩略图网格",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "label.markKeep",
+        "title": "标记为保留",
+        "icon": "$(check)"
+      },
+      {
+        "command": "label.markDelete",
+        "title": "标记为删除",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "label.clearLabel",
+        "title": "清除标注",
+        "icon": "$(close)"
+      },
+      {
+        "command": "label.exportResults",
+        "title": "导出标注结果",
+        "icon": "$(save-as)"
+      },
+      {
+        "command": "label.nextUnreviewed",
+        "title": "下一张未标注图片",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "label.prevUnreviewed",
+        "title": "上一张未标注图片",
+        "icon": "$(arrow-up)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "label.openGrid",
+          "when": "view == label-explorer",
+          "group": "navigation"
+        },
+        {
+          "command": "label.exportResults",
+          "when": "view == label-explorer",
+          "group": "navigation"
+        },
+        {
+          "command": "label.refreshTree",
+          "when": "view == label-explorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "label.openViewer",
+          "when": "view == label-explorer && viewItem == image",
+          "group": "inline"
+        },
+        {
+          "command": "label.markKeep",
+          "when": "view == label-explorer && viewItem == image",
+          "group": "context@1"
+        },
+        {
+          "command": "label.markDelete",
+          "when": "view == label-explorer && viewItem == image",
+          "group": "context@2"
+        },
+        {
+          "command": "label.clearLabel",
+          "when": "view == label-explorer && viewItem == image",
+          "group": "context@3"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "label.markKeep",
+        "key": "k",
+        "when": "labelViewerActive"
+      },
+      {
+        "command": "label.markDelete",
+        "key": "d",
+        "when": "labelViewerActive"
+      },
+      {
+        "command": "label.markKeep",
+        "key": "right",
+        "when": "labelViewerActive"
+      },
+      {
+        "command": "label.markDelete",
+        "key": "left",
+        "when": "labelViewerActive"
+      },
+      {
+        "command": "label.nextUnreviewed",
+        "key": "down",
+        "when": "labelViewerActive"
+      },
+      {
+        "command": "label.prevUnreviewed",
+        "key": "up",
+        "when": "labelViewerActive"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "tsc -p ./",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
