@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -26,6 +25,58 @@ export function isLabelStateFile(filePath: string): boolean {
 }
 
 /**
+ * 判断目录是否应该跳过（隐藏目录 / node_modules）
+ */
+function shouldSkipDir(name: string): boolean {
+  return name.startsWith('.') || name === 'node_modules';
+}
+
+/** 单层目录扫描结果 */
+export interface DirectoryListing {
+  /** 直接子目录（不含图片的子目录，作为树中间节点） */
+  subdirs: string[];
+  /** 直接包含的图片文件 */
+  images: string[];
+}
+
+/**
+ * 单层扫描：只列出 dir 下的直接子项（不递归）
+ *
+ * 这是高性能设计的核心 — 对于千万级图片的目录树，只在用户展开某个节点时
+ * 才扫描该层，避免启动时全量递归扫描整个工作区。
+ */
+export function listDirectory(dir: string): DirectoryListing {
+  const subdirs: string[] = [];
+  const images: string[] = [];
+
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return { subdirs, images };
+  }
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (!shouldSkipDir(entry.name)) {
+        subdirs.push(path.join(dir, entry.name));
+      }
+    } else if (entry.isFile()) {
+      if (isImageFile(entry.name) && !isLabelStateFile(entry.name)) {
+        images.push(path.join(dir, entry.name));
+      }
+    }
+  }
+
+  // 按名称排序（数字感知）
+  const collator = new Intl.Collator(undefined, { numeric: true });
+  subdirs.sort((a, b) => collator.compare(path.basename(a), path.basename(b)));
+  images.sort((a, b) => collator.compare(path.basename(a), path.basename(b)));
+
+  return { subdirs, images };
+}
+
+/**
  * 递归扫描目录，返回所有图片文件的完整路径（排序后）
  * 忽略隐藏文件夹（以 . 开头）和 node_modules
  */
@@ -37,10 +88,9 @@ export function scanImageFiles(folderPath: string): string[] {
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
-      return; // 跳过无法读取的目录
+      return;
     }
 
-    // 文件夹在前，文件在后，各自按名称排序
     const sorted = entries.sort((a, b) => {
       if (a.isDirectory() && !b.isDirectory()) { return -1; }
       if (!a.isDirectory() && b.isDirectory()) { return 1; }
@@ -51,8 +101,7 @@ export function scanImageFiles(folderPath: string): string[] {
       const fullPath = path.join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        // 跳过隐藏文件夹和 node_modules
-        if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
+        if (!shouldSkipDir(entry.name)) {
           walk(fullPath);
         }
       } else if (entry.isFile()) {
@@ -92,7 +141,7 @@ export function getRelativePath(absolutePath: string, workspaceRoot: string): st
 
 /**
  * 获取某一文件夹下所有子文件夹中包含图片的目录列表
- * 用于构建树视图
+ * 用于构建树视图（兼容旧代码，新代码用 listDirectory）
  */
 export function getImageFolders(workspaceRoot: string): string[] {
   const folders = new Set<string>();
@@ -106,14 +155,12 @@ export function getImageFolders(workspaceRoot: string): string[] {
     }
 
     let hasImages = false;
-    let hasSubdirs = false;
 
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
-          hasSubdirs = true;
+        if (!shouldSkipDir(entry.name)) {
           walk(fullPath);
         }
       } else if (entry.isFile() && isImageFile(entry.name)) {

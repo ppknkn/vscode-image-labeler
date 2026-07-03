@@ -24,8 +24,11 @@ function extractFilePath(arg: any): string | undefined {
 
 function extractFolderPath(arg: any): string | undefined {
   if (typeof arg === 'string') { return arg; }
-  // ImageTreeItem
-  if (arg && typeof arg.filePath === 'string') { return path.dirname(arg.filePath); }
+  // ImageTreeItem: directory 类型直接返回 filePath，image 类型取 dirname
+  if (arg && typeof arg.filePath === 'string') {
+    if (arg.itemType === 'directory') { return arg.filePath; }
+    return path.dirname(arg.filePath);
+  }
   return undefined;
 }
 

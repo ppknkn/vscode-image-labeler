@@ -18,16 +18,7 @@
     "标注"
   ],
   "activationEvents": [
-    "onView:label-explorer",
-    "onCommand:label.openViewer",
-    "onCommand:label.openGrid",
-    "onCommand:label.markKeep",
-    "onCommand:label.markDelete",
-    "onCommand:label.clearLabel",
-    "onCommand:label.refreshTree",
-    "onCommand:label.exportResults",
-    "onCommand:label.nextUnreviewed",
-    "onCommand:label.prevUnreviewed"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -135,6 +126,11 @@
           "command": "label.clearLabel",
           "when": "view == label-explorer && viewItem == image",
           "group": "context@3"
+        },
+        {
+          "command": "label.openGrid",
+          "when": "view == label-explorer && viewItem == directory",
+          "group": "context@1"
         }
       ]
     },

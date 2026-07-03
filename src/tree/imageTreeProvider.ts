@@ -2,18 +2,22 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ImageTreeItem } from './imageTreeItem';
 import { LabelStateManager } from '../state/labelState';
-import { getImageFolders, scanImageFiles } from '../utils/fileUtils';
+import { listDirectory } from '../utils/fileUtils';
 
 /**
- * ImageTreeProvider — 实现 TreeDataProvider<ImageTreeItem>
+ * ImageTreeProvider — 惰性层次化树视图
  *
- * 树结构：
- *   [文件夹A] (已标注/总数)
- *     ├── 🟢 img001.jpg (保留)
- *     ├── 🔴 img002.jpg (删除)
- *     └── ⚪ img003.jpg
- *   [文件夹B] (已标注/总数)
+ * 树结构（按需加载，每次只扫描一层）：
+ *   [目录A/]  (12 张)        ← 含图片的子目录
+ *     ├── [子目录A1/]         ← 嵌套子目录（无直接图片时不显示count）
+ *     ├── img001.jpg  ✓保留
+ *     └── img002.jpg  ✗删除
+ *   [目录B/]  (5 张)
  *     └── ...
+ *   img_root.jpg  ◻未标注     ← 工作区根目录的直接图片
+ *
+ * 关键设计：启动时只扫描工作区根目录一层 (O(n) n=直接子项数)，
+ * 展开节点时才扫描下一层，完全避免了递归全量扫描。
  */
 export class ImageTreeProvider implements vscode.TreeDataProvider<ImageTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<ImageTreeItem | undefined | null>();
@@ -27,18 +31,10 @@ export class ImageTreeProvider implements vscode.TreeDataProvider<ImageTreeItem>
     this.stateManager = stateManager;
   }
 
-  /**
-   * 刷新整个树（只触发重绘，不清除缓存）
-   *
-   * 注意：LabelStateManager 的缓存是内存标注的数据源。
-   * 清除缓存会销毁尚未写入磁盘的标注数据，导致状态回退。
-   * 如果需要强刷，应该先 flushAll() 再 clearCache()。
-   */
   refresh(): void {
     this._onDidChangeTreeData.fire(undefined);
   }
 
-  /** 刷新指定节点 */
   refreshItem(item: ImageTreeItem): void {
     this._onDidChangeTreeData.fire(item);
   }
@@ -48,69 +44,73 @@ export class ImageTreeProvider implements vscode.TreeDataProvider<ImageTreeItem>
   }
 
   /**
-   * 实现 getParent 以支持 treeView.reveal()
-   * 图片节点的父节点是所在文件夹节点，文件夹节点的父节点是 null（根）
+   * getParent — 通过向上找父目录来支持 treeView.reveal()
    */
   getParent(element: ImageTreeItem): vscode.ProviderResult<ImageTreeItem> {
-    if (element.itemType === 'image') {
-      // 图片的父节点是它所在的文件夹
-      const folderPath = path.dirname(element.filePath);
-      const images = scanImageFiles(folderPath);
-      const state = this.stateManager.get(folderPath);
-      const progress = state.getProgress(images.length);
-      return ImageTreeItem.createFolderNode(
-        folderPath,
-        this.workspaceRoot,
-        progress.total,
-        progress.reviewed
-      );
+    const parentDir = path.dirname(element.filePath);
+
+    // 如果父目录就是工作区根目录，或已经超出工作区，返回 null（根节点）
+    const normalizedParent = path.normalize(parentDir);
+    const normalizedRoot = path.normalize(this.workspaceRoot);
+
+    if (normalizedParent === normalizedRoot || !normalizedParent.startsWith(normalizedRoot)) {
+      return null;
     }
-    // 文件夹节点的父节点是根（null）
-    return null;
+
+    // 返回父目录节点
+    return ImageTreeItem.createDirectoryNode(parentDir, this.workspaceRoot, 0);
   }
 
+  /**
+   * getChildren — 惰性加载
+   *
+   * - undefined（根）→ 工作区根目录的单层扫描结果
+   * - directory   → 该目录的单层扫描结果
+   * - image       → []（叶子节点）
+   */
   async getChildren(element?: ImageTreeItem): Promise<ImageTreeItem[]> {
     if (!element) {
-      // 根节点 — 返回所有包含图片的文件夹
-      return this.getFolderNodes();
+      return this.getChildrenFor(this.workspaceRoot);
     }
 
-    if (element.itemType === 'folder') {
-      // 文件夹节点 — 返回其中的所有图片
-      return this.getImageNodes(element.filePath);
+    if (element.itemType === 'directory') {
+      return this.getChildrenFor(element.filePath);
     }
 
-    // 图片节点没有子节点
     return [];
   }
 
-  /** 获取根级别的文件夹列表 */
-  private getFolderNodes(): ImageTreeItem[] {
-    const stateManager = this.stateManager;
-    const folders = getImageFolders(this.workspaceRoot);
+  /**
+   * 获取某个目录下的直接子项（子目录 + 图片）
+   * 只扫描一层，O(n) 在 n=直接子项数量
+   */
+  private getChildrenFor(dirPath: string): ImageTreeItem[] {
+    const listing = listDirectory(dirPath);
+    const children: ImageTreeItem[] = [];
 
-    return folders.map(folderPath => {
-      const images = scanImageFiles(folderPath);
-      const state = stateManager.get(folderPath);
-      const progress = state.getProgress(images.length);
+    // 子目录（可展开）
+    for (const subdir of listing.subdirs) {
+      // 快速再扫一层判断子目录是否有内容（避免展开后为空）
+      const subListing = listDirectory(subdir);
+      const hasContent = subListing.subdirs.length > 0 || subListing.images.length > 0;
+      if (hasContent) {
+        children.push(
+          ImageTreeItem.createDirectoryNode(
+            subdir,
+            this.workspaceRoot,
+            subListing.images.length
+          )
+        );
+      }
+    }
 
-      return ImageTreeItem.createFolderNode(
-        folderPath,
-        this.workspaceRoot,
-        progress.total,
-        progress.reviewed
-      );
-    });
-  }
+    // 直接图片
+    for (const imgPath of listing.images) {
+      const status = this.stateManager.getFileStatus(imgPath);
+      const siblingImages = listing.images; // 同目录下的所有图片
+      children.push(ImageTreeItem.createImageNode(imgPath, status, siblingImages));
+    }
 
-  /** 获取某个文件夹下的图片子节点 */
-  private getImageNodes(folderPath: string): ImageTreeItem[] {
-    const images = scanImageFiles(folderPath);
-    const state = this.stateManager.get(folderPath);
-
-    return images.map(imagePath => {
-      const status = state.getStatus(path.basename(imagePath));
-      return ImageTreeItem.createImageNode(imagePath, status, images);
-    });
+    return children;
   }
 }
