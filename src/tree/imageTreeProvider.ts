@@ -2,22 +2,14 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ImageTreeItem } from './imageTreeItem';
 import { LabelStateManager } from '../state/labelState';
-import { listDirectory } from '../utils/fileUtils';
+import { listDirectory, isImageFile } from '../utils/fileUtils';
 
 /**
- * ImageTreeProvider — 惰性层次化树视图
+ * ImageTreeProvider — 惰性层次化树视图（单层扫描，零额外 I/O）
  *
- * 树结构（按需加载，每次只扫描一层）：
- *   [目录A/]  (12 张)        ← 含图片的子目录
- *     ├── [子目录A1/]         ← 嵌套子目录（无直接图片时不显示count）
- *     ├── img001.jpg  ✓保留
- *     └── img002.jpg  ✗删除
- *   [目录B/]  (5 张)
- *     └── ...
- *   img_root.jpg  ◻未标注     ← 工作区根目录的直接图片
- *
- * 关键设计：启动时只扫描工作区根目录一层 (O(n) n=直接子项数)，
- * 展开节点时才扫描下一层，完全避免了递归全量扫描。
+ * 核心设计：每个 getChildren 调用只做一次 readdirSync，
+ * 目录节点全部显示（不预判是否为空），展开时才扫描下一层。
+ * 根节点下即使有数万个子目录也不做额外 I/O。
  */
 export class ImageTreeProvider implements vscode.TreeDataProvider<ImageTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<ImageTreeItem | undefined | null>();
@@ -81,33 +73,23 @@ export class ImageTreeProvider implements vscode.TreeDataProvider<ImageTreeItem>
   }
 
   /**
-   * 获取某个目录下的直接子项（子目录 + 图片）
-   * 只扫描一层，O(n) 在 n=直接子项数量
+   * 获取某个目录下的直接子项（仅一次 readdirSync，不预扫子目录）
    */
   private getChildrenFor(dirPath: string): ImageTreeItem[] {
     const listing = listDirectory(dirPath);
     const children: ImageTreeItem[] = [];
 
-    // 子目录（可展开）
+    // 子目录 — 全部显示为可展开节点，不预判是否为空（避免 N 次额外 I/O）
     for (const subdir of listing.subdirs) {
-      // 快速再扫一层判断子目录是否有内容（避免展开后为空）
-      const subListing = listDirectory(subdir);
-      const hasContent = subListing.subdirs.length > 0 || subListing.images.length > 0;
-      if (hasContent) {
-        children.push(
-          ImageTreeItem.createDirectoryNode(
-            subdir,
-            this.workspaceRoot,
-            subListing.images.length
-          )
-        );
-      }
+      children.push(
+        ImageTreeItem.createDirectoryNode(subdir, this.workspaceRoot, 0)
+      );
     }
 
     // 直接图片
     for (const imgPath of listing.images) {
       const status = this.stateManager.getFileStatus(imgPath);
-      const siblingImages = listing.images; // 同目录下的所有图片
+      const siblingImages = listing.images;
       children.push(ImageTreeItem.createImageNode(imgPath, status, siblingImages));
     }
 
