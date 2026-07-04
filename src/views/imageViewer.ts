@@ -33,6 +33,7 @@ export class ImageViewer {
   static refreshTreeDebounced: (() => void) | null = null;
 
   private _currentImagePath: string = '';
+  private _currentFolder: string = '';
   private _siblingImages: string[] = [];
   private _currentStatus: LabelStatus = null;
 
@@ -159,11 +160,17 @@ export class ImageViewer {
    * 导航到指定图片
    */
   private navigateToImage(imagePath: string): void {
-    // 确保 webview 安全策略允许加载新图片所在目录（跨文件夹导航时需要）
     this.ensureResourceRoot(imagePath);
 
     this._currentImagePath = imagePath;
-    this._siblingImages = getSiblingImages(imagePath);
+
+    // 只在切换文件夹时重新扫描 sibling 列表（播放期间同一文件夹无需重复扫描）
+    const newFolder = path.dirname(imagePath);
+    if (newFolder !== this._currentFolder) {
+      this._currentFolder = newFolder;
+      this._siblingImages = getSiblingImages(imagePath);
+    }
+
     this._currentStatus = this._stateManager.getFileStatus(imagePath);
 
     // 更新 webview 中显示的图片
@@ -174,8 +181,8 @@ export class ImageViewer {
 
     this._panel.title = `图片查看器 - ${fileName}`;
 
-    // 通知侧边栏跟随当前图片位置
-    if (ImageViewer.onNavigate) {
+    // 通知侧边栏跟随（播放期间跳过，节省性能）
+    if (ImageViewer.onNavigate && !this._isPlaying) {
       ImageViewer.onNavigate(imagePath);
     }
 
@@ -894,7 +901,8 @@ export class ImageViewer {
       progress: this.getProgress()
     });
 
-    if (ImageViewer.refreshTreeDebounced) {
+    // 播放期间跳过树刷新（在 stopPlayback 时统一刷新一次）
+    if (ImageViewer.refreshTreeDebounced && !this._isPlaying) {
       ImageViewer.refreshTreeDebounced();
     }
   }
@@ -938,6 +946,11 @@ export class ImageViewer {
     if (this._playbackTimer) {
       clearInterval(this._playbackTimer);
       this._playbackTimer = null;
+    }
+
+    // 播放结束后刷新树视图（播放期间的标注变更一次性同步到侧边栏）
+    if (ImageViewer.refreshTreeDebounced) {
+      ImageViewer.refreshTreeDebounced();
     }
 
     this._panel.webview.postMessage({
