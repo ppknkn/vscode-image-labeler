@@ -345,55 +345,8 @@ export class ImageViewer {
       }
     }
 
-    // 阶段 3: 跨文件夹搜索
-    const currentFolder = path.dirname(this._currentImagePath);
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (workspaceRoot) {
-      const allImages = scanImageFiles(workspaceRoot);
-
-      // 收集所有包含图片的文件夹（按路径排序）
-      const folderSet = new Set<string>();
-      for (const img of allImages) {
-        folderSet.add(path.dirname(img));
-      }
-      const folders = Array.from(folderSet).sort();
-
-      // 找到当前文件夹在列表中的位置
-      const currentFolderIdx = folders.findIndex(
-        f => path.normalize(f) === path.normalize(currentFolder)
-      );
-
-      // 从下一个文件夹开始搜索
-      for (let fi = currentFolderIdx + 1; fi < folders.length; fi++) {
-        const folderImages = scanImageFiles(folders[fi]);
-        for (const img of folderImages) {
-          if (this._stateManager.getFileStatus(img) === null) {
-            vscode.window.showInformationMessage(
-              `📁 跳转到下一个文件夹: ${path.basename(folders[fi])}`
-            );
-            this.navigateToImage(img);
-            return;
-          }
-        }
-      }
-
-      // 从头开始环回搜索（跳过当前文件夹之前的所有文件夹）
-      for (let fi = 0; fi < currentFolderIdx; fi++) {
-        const folderImages = scanImageFiles(folders[fi]);
-        for (const img of folderImages) {
-          if (this._stateManager.getFileStatus(img) === null) {
-            vscode.window.showInformationMessage(
-              `📁 跳转到文件夹: ${path.basename(folders[fi])}`
-            );
-            this.navigateToImage(img);
-            return;
-          }
-        }
-      }
-    }
-
-    // 阶段 4: 全部完成
-    vscode.window.showInformationMessage('🎉 所有文件夹的图片已全部标注完成！');
+    // 当前文件夹全部标注完成 → 提示用户手动切换
+    vscode.window.showInformationMessage('🎉 当前文件夹所有图片已标注完成！请在侧边栏切换到下一个文件夹继续');
     this._panel.webview.postMessage({
       type: 'allDone',
       progress: this.getProgress()
