@@ -53,9 +53,11 @@ export class ThumbnailGrid {
     folderPath: string
   ): void {
     if (ThumbnailGrid.currentPanel) {
-      ThumbnailGrid.currentPanel._panel.reveal(vscode.ViewColumn.Active);
+      // 复用面板时更新 localResourceRoots，确保新文件夹的图片不被安全策略拦截
+      ThumbnailGrid.currentPanel.updateResourceRoots(folderPath);
       ThumbnailGrid.currentPanel._folderPath = folderPath;
       ThumbnailGrid.currentPanel._images = scanImageFiles(folderPath);
+      ThumbnailGrid.currentPanel._panel.reveal(vscode.ViewColumn.Active);
       ThumbnailGrid.currentPanel.sendImageList();
     } else {
       const panel = vscode.window.createWebviewPanel(
@@ -70,6 +72,21 @@ export class ThumbnailGrid {
       );
 
       ThumbnailGrid.currentPanel = new ThumbnailGrid(panel, stateManager, folderPath);
+    }
+  }
+
+  /**
+   * 更新 webview 的 localResourceRoots 以包含新文件夹
+   */
+  private updateResourceRoots(folderPath: string): void {
+    const newRoot = vscode.Uri.file(folderPath);
+    const currentRoots = this._panel.webview.options.localResourceRoots || [];
+    const alreadyCovered = currentRoots.some(r => r.fsPath === newRoot.fsPath);
+    if (!alreadyCovered) {
+      this._panel.webview.options = {
+        ...this._panel.webview.options,
+        localResourceRoots: [...currentRoots, newRoot]
+      };
     }
   }
 
