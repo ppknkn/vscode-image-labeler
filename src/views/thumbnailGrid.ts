@@ -136,11 +136,23 @@ export class ThumbnailGrid {
           }
           state.setStatusBatch(updates);
           this._stateManager.scheduleFlush();
-          // 防抖树刷新 + 重新发送列表
           vscode.commands.executeCommand('label.refreshTree');
-          // 重新发送列表
           this.sendImageList();
         }
+        break;
+      }
+
+      case 'batchMarkAll': {
+        const status = message.status || null;
+        const state = this._stateManager.get(this._folderPath);
+        const updates: Record<string, LabelStatus> = {};
+        for (const imgPath of this._images) {
+          updates[path.basename(imgPath)] = status;
+        }
+        state.setStatusBatch(updates);
+        this._stateManager.scheduleFlush();
+        vscode.commands.executeCommand('label.refreshTree');
+        this.sendImageList();
         break;
       }
 
@@ -213,6 +225,25 @@ export class ThumbnailGrid {
     }
     .filter-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
     .filter-btn.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-background); }
+
+    /* 批量全部操作按钮 */
+    .batch-all-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 14px;
+      background: transparent;
+      color: var(--vscode-editor-foreground);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      font-family: inherit;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .batch-all-btn:hover { filter: brightness(1.3); }
+    .batch-all-btn.keep { border-color: #4caf50; }
+    .batch-all-btn.delete { border-color: #f44336; }
+    .batch-all-btn.clear { border-color: var(--vscode-descriptionForeground); opacity: 0.7; }
 
     #stats { font-size: 12px; color: var(--vscode-descriptionForeground); }
     #selection-count { font-size: 12px; color: var(--vscode-textLink-foreground); display: none; }
@@ -362,6 +393,10 @@ export class ThumbnailGrid {
       <button class="filter-btn" data-filter="unreviewed">未标注</button>
       <button class="filter-btn" data-filter="keep">保留</button>
       <button class="filter-btn" data-filter="delete">删除</button>
+      <span style="margin-left:12px;"></span>
+      <button class="batch-all-btn keep" id="btn-keep-all" title="将当前文件夹所有图片标记为保留">✓ 全部保留</button>
+      <button class="batch-all-btn delete" id="btn-delete-all" title="将当前文件夹所有图片标记为删除">✗ 全部删除</button>
+      <button class="batch-all-btn clear" id="btn-clear-all" title="清除当前文件夹所有图片的标注">○ 全部清除</button>
     </div>
     <div class="right">
       <span id="selection-count">已选: 0</span>
@@ -416,6 +451,19 @@ export class ThumbnailGrid {
     });
     document.getElementById('batch-clear').addEventListener('click', () => {
       vscode.postMessage({ command: 'batchMark', files: Array.from(selectedPaths), status: null });
+    });
+
+    // ====== 批量全部操作按钮 ======
+    document.getElementById('btn-keep-all').addEventListener('click', () => {
+      vscode.postMessage({ command: 'batchMarkAll', status: 'keep' });
+    });
+    document.getElementById('btn-delete-all').addEventListener('click', () => {
+      if (!confirm('确认将当前文件夹所有图片标记为删除？此操作不可撤销。')) return;
+      vscode.postMessage({ command: 'batchMarkAll', status: 'delete' });
+    });
+    document.getElementById('btn-clear-all').addEventListener('click', () => {
+      if (!confirm('确认清除当前文件夹所有图片的标注？')) return;
+      vscode.postMessage({ command: 'batchMarkAll', status: null });
     });
 
     // ====== 点击空白区域取消选择 ======
