@@ -1017,37 +1017,9 @@ export class ImageViewer {
       return;
     }
 
-    // 当前文件夹结束 → 跨文件夹
-    const currentFolder = path.dirname(this._currentImagePath);
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (workspaceRoot) {
-      const allImages = scanImageFiles(workspaceRoot);
-      const folderSet = new Set<string>();
-      for (const img of allImages) { folderSet.add(path.dirname(img)); }
-      const folders = Array.from(folderSet).sort();
-      const currentFolderIdx = folders.findIndex(
-        f => path.normalize(f) === path.normalize(currentFolder)
-      );
-
-      for (let fi = currentFolderIdx + 1; fi < folders.length; fi++) {
-        const folderImages = scanImageFiles(folders[fi]);
-        if (folderImages.length > 0) {
-          vscode.window.showInformationMessage(
-            `📁 播放到下一个文件夹: ${path.basename(folders[fi])}`
-          );
-          this.navigateToImage(folderImages[0]);
-          return;
-        }
-      }
-    }
-
-    // 全部播放完毕
+    // 当前文件夹播完 → 自动暂停，等待用户手动进入下一个文件夹
     this.stopPlayback();
-    vscode.window.showInformationMessage('🎬 所有文件夹播放完毕！');
-    this._panel.webview.postMessage({
-      type: 'allDone',
-      progress: this.getProgress()
-    });
+    vscode.window.showInformationMessage('⏸ 当前文件夹播放完毕，请手动切换到下一个文件夹后按 P 继续播放');
   }
 
   /**
