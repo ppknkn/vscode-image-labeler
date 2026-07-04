@@ -458,11 +458,9 @@ export class ThumbnailGrid {
       vscode.postMessage({ command: 'batchMarkAll', status: 'keep' });
     });
     document.getElementById('btn-delete-all').addEventListener('click', () => {
-      if (!confirm('确认将当前文件夹所有图片标记为删除？此操作不可撤销。')) return;
       vscode.postMessage({ command: 'batchMarkAll', status: 'delete' });
     });
     document.getElementById('btn-clear-all').addEventListener('click', () => {
-      if (!confirm('确认清除当前文件夹所有图片的标注？')) return;
       vscode.postMessage({ command: 'batchMarkAll', status: null });
     });
 
